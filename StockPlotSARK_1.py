@@ -113,14 +113,28 @@ else:
     if not data.empty:
         df = data.copy().reset_index()
 
-        # ★ 必須優先展平多層欄位，否則後續 df['Date'] 會 KeyError
-        # 新版 yfinance download() 單一股票也會產生 MultiIndex 欄位，如 ('Date',''), ('Close','2330.TW')
+        # ★ 強健版：處理各種版本 yfinance 的欄位格式差異
+        # 情況1：真正的 pd.MultiIndex → 取第一層名稱
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
+        # 情況2：欄位名稱是 tuple（存在 regular Index 中，isinstance 判斷不到）→ 取 tuple[0]
+        elif any(isinstance(c, tuple) for c in df.columns):
+            df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
 
-        # 相容新版 yfinance 將日期欄位改名為 'Datetime' 的情況
-        if 'Datetime' in df.columns and 'Date' not in df.columns:
-            df.rename(columns={'Datetime': 'Date'}, inplace=True)
+        # ★ 強健版：找日期欄位，不限定名稱
+        # 依序嘗試常見命名，最後才用 dtype 搜尋
+        _date_col = next(
+            (c for c in ['Date', 'Datetime', 'date', 'datetime', 'index'] if c in df.columns),
+            None
+        )
+        if _date_col is None:
+            # 以資料型別找第一個 datetime 欄位
+            _date_col = next(
+                (c for c in df.columns if pd.api.types.is_datetime64_any_dtype(df[c])),
+                None
+            )
+        if _date_col and _date_col != 'Date':
+            df.rename(columns={_date_col: 'Date'}, inplace=True)
 
         # 格式化日期(用於 X 軸顯示)：移除 X 軸非交易日空隙的關鍵，先將日期轉為字串
         # 這樣會顯示成：Nov 02 2022
