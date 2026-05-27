@@ -112,13 +112,19 @@ else:
     
     if not data.empty:
         df = data.copy().reset_index()
+
+        # ★ 必須優先展平多層欄位，否則後續 df['Date'] 會 KeyError
+        # 新版 yfinance download() 單一股票也會產生 MultiIndex 欄位，如 ('Date',''), ('Close','2330.TW')
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        # 相容新版 yfinance 將日期欄位改名為 'Datetime' 的情況
+        if 'Datetime' in df.columns and 'Date' not in df.columns:
+            df.rename(columns={'Datetime': 'Date'}, inplace=True)
+
         # 格式化日期(用於 X 軸顯示)：移除 X 軸非交易日空隙的關鍵，先將日期轉為字串
         # 這樣會顯示成：Nov 02 2022
         df['Date_Str'] = df['Date'].dt.strftime('%b %d %Y')
-
-        # 處理 yfinance 可能產生的多層欄位
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
         
         # 展平數據確保計算穩定
         df['Close_1D'] = df['Close'].values.flatten()
